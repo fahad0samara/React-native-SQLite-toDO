@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { Picker } from '@react-native-picker/picker';
+
 import {
   SafeAreaView,
   StyleSheet,
@@ -6,10 +8,8 @@ import {
   TextInput,
   Text,
   TouchableOpacity,
-  FlatList
+  FlatList,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
-
 import * as SQLite from 'expo-sqlite';
 import {
   IconButton,
@@ -17,6 +17,7 @@ import {
   Portal,
   Dialog,
   Button,
+  Checkbox,
 } from 'react-native-paper';
 import asyncAlert from './asyncAlert';
 
@@ -28,20 +29,26 @@ const TaskPriority = {
   LOW: 'Low',
 };
 
+const TaskCategory = {
+  PERSONAL: 'Personal',
+  WORK: 'Work',
+  SHOPPING: 'Shopping',
+};
+
 export default function App() {
   const [taskInputValue, setTaskInputValue] = useState('');
-  const [taskPriority, setTaskPriority] = useState(TaskPriority.MEDIUM);
-  const [taskCategory, setTaskCategory] = useState('Personal'); // Default category
   const [dialog, setDialog] = useState({
     task: {},
     isVisible: false,
   });
   const [tasks, setTasks] = useState([]);
+  const [taskPriority, setTaskPriority] = useState(TaskPriority.MEDIUM);
+  const [taskCategory, setTaskCategory] = useState(TaskCategory.PERSONAL);
 
   useEffect(() => {
     db.transaction((tx) => {
       tx.executeSql(
-        'create table if not exists tasks (id integer primary key not null, uid text, task text, priority text, category text);'
+        'create table if not exists tasks (id integer primary key not null, uid text, task text, priority text, category text, completed integer);'
       );
       tx.executeSql('select * from tasks', [], (_, { rows }) => {
         const tasks = rows._array.map((item) => ({
@@ -49,6 +56,7 @@ export default function App() {
           task: item.task,
           priority: item.priority,
           category: item.category,
+          completed: item.completed === 1,
         }));
         setTasks(tasks);
       });
@@ -77,8 +85,14 @@ export default function App() {
 
     db.transaction((tx) => {
       tx.executeSql(
-        `update tasks set uid=?, task=?, priority=?, category=? where uid=${updatedTask.uid}`,
-        [updatedTask.uid, updatedTask.task, updatedTask.priority, updatedTask.category]
+        `update tasks set uid=?, task=?, priority=?, category=?, completed=? where uid=${updatedTask.uid}`,
+        [
+          updatedTask.uid,
+          updatedTask.task,
+          updatedTask.priority,
+          updatedTask.category,
+          updatedTask.completed ? 1 : 0,
+        ]
       );
     });
   };
@@ -99,6 +113,14 @@ export default function App() {
     });
   };
 
+  const toggleTaskCompletion = (task) => {
+    const updatedTask = {
+      ...task,
+      completed: !task.completed,
+    };
+    hideDialog(updatedTask);
+  };
+
   return (
     <Provider>
       <SafeAreaView style={{ flex: 1 }}>
@@ -112,26 +134,30 @@ export default function App() {
               underlineColorAndroid="transparent"
               style={styles.textInputStyle}
             />
-            <Picker
-              selectedValue={taskPriority}
-              style={styles.priorityPicker}
-              onValueChange={(itemValue) => setTaskPriority(itemValue)}
-            >
-              <Picker.Item label="High" value={TaskPriority.HIGH} />
-              <Picker.Item label="Medium" value={TaskPriority.MEDIUM} />
-              <Picker.Item label="Low" value={TaskPriority.LOW} />
-            </Picker>
-            <Picker
-              selectedValue={taskCategory}
-              style={styles.categoryPicker}
-              onValueChange={(itemValue) => setTaskCategory(itemValue)}
-            >
-              <Picker.Item label="Personal" value="Personal" />
-              <Picker.Item label="Work" value="Work" />
-              <Picker.Item label="Shopping" value="Shopping" />
-              {/* Add more categories as needed */}
-            </Picker>
+           
           </View>
+           <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={taskPriority}
+                style={styles.picker}
+                onValueChange={(itemValue) => setTaskPriority(itemValue)}
+              >
+                <Picker.Item label="High" value={TaskPriority.HIGH} />
+                <Picker.Item label="Medium" value={TaskPriority.MEDIUM} />
+                <Picker.Item label="Low" value={TaskPriority.LOW} />
+              </Picker>
+              <Picker
+                selectedValue={taskCategory}
+                style={styles.picker}
+                onValueChange={(itemValue) => setTaskCategory(itemValue)}
+              >
+                <Picker.Item label="Personal" value={TaskCategory.PERSONAL} />
+                <Picker.Item label="Work" value={TaskCategory.WORK} />
+                <Picker.Item label="Shopping" value={TaskCategory.SHOPPING} />
+                {/* Add more categories as needed */}
+              </Picker>
+            </View>
+
           <TouchableOpacity
             disabled={!taskInputValue}
             onPress={() => {
@@ -140,12 +166,19 @@ export default function App() {
                 task: taskInputValue,
                 priority: taskPriority,
                 category: taskCategory,
+                completed: false,
               };
               setTasks([...tasks, newTask]);
               db.transaction((tx) => {
                 tx.executeSql(
-                  'insert into tasks (uid, task, priority, category) values(?, ?, ?, ?)',
-                  [newTask.uid, newTask.task, newTask.priority, newTask.category]
+                  'insert into tasks (uid, task, priority, category, completed) values(?, ?, ?, ?, ?)',
+                  [
+                    newTask.uid,
+                    newTask.task,
+                    newTask.priority,
+                    newTask.category,
+                    newTask.completed ? 1 : 0,
+                  ]
                 );
               });
               setTaskInputValue('');
@@ -160,7 +193,20 @@ export default function App() {
               data={tasks}
               renderItem={({ item }) => (
                 <View style={styles.task}>
-                  <Text style={styles.taskText}>{item.task}</Text>
+                  <View style={styles.taskInfo}>
+                    <Checkbox
+                      status={item.completed ? 'checked' : 'unchecked'}
+                      onPress={() => toggleTaskCompletion(item)}
+                    />
+                    <Text
+                      style={[
+                        styles.taskText,
+                        item.completed && styles.completedTask,
+                      ]}
+                    >
+                      {item.task}
+                    </Text>
+                  </View>
                   <Text style={styles.priorityText}>{item.priority}</Text>
                   <Text style={styles.categoryText}>{item.category}</Text>
                   <View style={styles.icons}>
@@ -199,41 +245,43 @@ export default function App() {
                 underlineColorAndroid="transparent"
                 style={styles.textInputStyle}
               />
-              <Picker
-                selectedValue={dialog.task.priority}
-                style={styles.priorityPicker}
-                onValueChange={(itemValue) =>
-                  setDialog((prev) => ({
-                    ...prev,
-                    task: {
-                      ...prev.task,
-                      priority: itemValue,
-                    },
-                  }))
-                }
-              >
-                <Picker.Item label="High" value={TaskPriority.HIGH} />
-                <Picker.Item label="Medium" value={TaskPriority.MEDIUM} />
-                <Picker.Item label="Low" value={TaskPriority.LOW} />
-              </Picker>
-              <Picker
-                selectedValue={dialog.task.category}
-                style={styles.categoryPicker}
-                onValueChange={(itemValue) =>
-                  setDialog((prev) => ({
-                    ...prev,
-                    task: {
-                      ...prev.task,
-                      category: itemValue,
-                    },
-                  }))
-                }
-              >
-                <Picker.Item label="Personal" value="Personal" />
-                <Picker.Item label="Work" value="Work" />
-                <Picker.Item label="Shopping" value="Shopping" />
-                {/* Add more categories as needed */}
-              </Picker>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={dialog.task.priority}
+                  style={styles.picker}
+                  onValueChange={(itemValue) =>
+                    setDialog((prev) => ({
+                      ...prev,
+                      task: {
+                        ...prev.task,
+                        priority: itemValue,
+                      },
+                    }))
+                  }
+                >
+                  <Picker.Item label="High" value={TaskPriority.HIGH} />
+                  <Picker.Item label="Medium" value={TaskPriority.MEDIUM} />
+                  <Picker.Item label="Low" value={TaskPriority.LOW} />
+                </Picker>
+                <Picker
+                  selectedValue={dialog.task.category}
+                  style={styles.picker}
+                  onValueChange={(itemValue) =>
+                    setDialog((prev) => ({
+                      ...prev,
+                      task: {
+                        ...prev.task,
+                        category: itemValue,
+                      },
+                    }))
+                  }
+                >
+                  <Picker.Item label="Personal" value={TaskCategory.PERSONAL} />
+                  <Picker.Item label="Work" value={TaskCategory.WORK} />
+                  <Picker.Item label="Shopping" value={TaskCategory.SHOPPING} />
+                  {/* Add more categories as needed */}
+                </Picker>
+              </View>
             </Dialog.Content>
             <Dialog.Actions>
               <Button onPress={() => hideDialog(dialog.task)}>Done</Button>
@@ -261,8 +309,20 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor:"red"
+    
+
+
+  },
+  picker:{
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
+
+  
+
+
   },
   task: {
     flexDirection: 'row',
@@ -274,9 +334,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     elevation: 2,
   },
+  taskInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
   taskText: {
     fontSize: 18,
-    flex: 1,
+  },
+  completedTask: {
+    textDecorationLine: 'line-through',
+    color: 'gray',
   },
   priorityText: {
     fontSize: 18,
