@@ -24,7 +24,7 @@ import ModalSelector from "react-native-modal-selector"; // Import the ModalSele
 import { Ionicons } from "@expo/vector-icons";
 import ColorPicker from "./ColorPicker";
 
-const db = SQLite.openDatabase("todo_app");
+const db = SQLite.openDatabase("Todo_App");
 
 const TaskPriority = {
   HIGH: "High",
