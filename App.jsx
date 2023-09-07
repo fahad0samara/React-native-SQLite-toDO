@@ -1,6 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { Picker } from "@react-native-picker/picker";
-
 import {
   SafeAreaView,
   StyleSheet,
@@ -9,6 +7,8 @@ import {
   Text,
   TouchableOpacity,
   FlatList,
+  StatusBar,
+  Platform,
 } from "react-native";
 import * as SQLite from "expo-sqlite";
 import {
@@ -17,9 +17,12 @@ import {
   Portal,
   Dialog,
   Button,
-  Checkbox,
 } from "react-native-paper";
 import asyncAlert from "./asyncAlert";
+import ModalSelector from "react-native-modal-selector"; // Import the ModalSelector library
+
+import { Ionicons } from "@expo/vector-icons";
+import ColorPicker from "./ColorPicker";
 
 const db = SQLite.openDatabase("todo_app");
 
@@ -41,14 +44,28 @@ export default function App() {
     task: {},
     isVisible: false,
   });
+
+//adding
+  const [dialogADD, setDialogADD] = useState({
+    task: {},
+    isVisible: false,
+    
+  });
+
+
+
+
   const [tasks, setTasks] = useState([]);
   const [taskPriority, setTaskPriority] = useState(TaskPriority.MEDIUM);
   const [taskCategory, setTaskCategory] = useState(TaskCategory.PERSONAL);
+  const [taskColor, setTaskColor] = useState("#FF5733"); // Default color
+const [addTaskDialogVisible, setAddTaskDialogVisible] = useState(false);
+
 
   useEffect(() => {
     db.transaction((tx) => {
       tx.executeSql(
-        "create table if not exists tasks (id integer primary key not null, uid text, task text, priority text, category text, completed integer);"
+        "create table if not exists tasks (id integer primary key not null, uid text, task text, priority text, category text, completed integer, color text);"
       );
       tx.executeSql("select * from tasks", [], (_, { rows }) => {
         const tasks = rows._array.map((item) => ({
@@ -57,6 +74,8 @@ export default function App() {
           priority: item.priority,
           category: item.category,
           completed: item.completed === 1,
+          color: item.color || "#FF5733",
+          showActions: false, // New property for showing actions
         }));
         setTasks(tasks);
       });
@@ -85,13 +104,14 @@ export default function App() {
 
     db.transaction((tx) => {
       tx.executeSql(
-        `update tasks set uid=?, task=?, priority=?, category=?, completed=? where uid=${updatedTask.uid}`,
+        `update tasks set uid=?, task=?, priority=?, category=?, completed=?, color=? where uid=${updatedTask.uid}`,
         [
           updatedTask.uid,
           updatedTask.task,
           updatedTask.priority,
           updatedTask.category,
           updatedTask.completed ? 1 : 0,
+          updatedTask.color,
         ]
       );
     });
@@ -121,193 +141,335 @@ export default function App() {
     hideDialog(updatedTask);
   };
 
+  const toggleTaskActions = (item) => {
+    const updatedTasks = tasks.map((task) => {
+      if (task.uid === item.uid) {
+        return {
+          ...task,
+          showActions: !task.showActions,
+        };
+      } else {
+        return {
+          ...task,
+          showActions: false,
+        };
+      }
+    });
+    setTasks(updatedTasks);
+  };
+
+  const showDialogADD = (task) => {
+    setDialogADD({
+      isVisible: true,
+      task,
+    });
+
+
+
+   
+    setAddTaskDialogVisible(true); // Show the Add Task dialog
+  };
+
+  const hideDialogADD = () => {
+    setDialogADD({
+      isVisible: false,
+      task: {},
+    });
+  
+    setAddTaskDialogVisible(false); // Hide the Add Task dialog
+  }
+
+
+
+
+
+
+ 
+
+
   return (
     <Provider>
-      <SafeAreaView style={{ flex: 1 }}>
-        <View style={styles.container}>
-          <Text style={styles.titleText}>To-Do List</Text>
-          <View style={styles.input}>
-            <TextInput
-              placeholder="Enter a new task"
-              value={taskInputValue}
-              onChangeText={(data) => setTaskInputValue(data)}
-              underlineColorAndroid="transparent"
-              style={styles.textInputStyle}
-            />
-          </View>
-          <View style={styles.pickerContainer}>
-     <Text style={styles.label}>Select Priority:</Text>
-  <Picker
-    selectedValue={taskPriority}
-    style={styles.picker}
-    onValueChange={(itemValue) => setTaskPriority(itemValue)}
-  >
-    <Picker.Item label="High" value={TaskPriority.HIGH} />
-    <Picker.Item label="Medium" value={TaskPriority.MEDIUM} />
-    <Picker.Item label="Low" value={TaskPriority.LOW} />
-  </Picker>
-  <Text style={styles.label}>Select Category:</Text>
-  <Picker
-    selectedValue={taskCategory}
-    style={styles.picker}
-    onValueChange={(itemValue) => setTaskCategory(itemValue)}
-  >
-    <Picker.Item label="Personal" value={TaskCategory.PERSONAL} />
-    <Picker.Item label="Work" value={TaskCategory.WORK} />
-    <Picker.Item label="Shopping" value={TaskCategory.SHOPPING} />
-    {/* Add more categories as needed */}
-  </Picker>
-          </View>
-
-          <TouchableOpacity
-            disabled={!taskInputValue}
-            onPress={() => {
-              const newTask = {
-                uid: Date.now().toString(),
-                task: taskInputValue,
-                priority: taskPriority,
-                category: taskCategory,
-                completed: false,
-              };
-              setTasks([...tasks, newTask]);
-              db.transaction((tx) => {
-                tx.executeSql(
-                  "insert into tasks (uid, task, priority, category, completed) values(?, ?, ?, ?, ?)",
-                  [
-                    newTask.uid,
-                    newTask.task,
-                    newTask.priority,
-                    newTask.category,
-                    newTask.completed ? 1 : 0,
-                  ]
-                );
-              });
-              setTaskInputValue("");
-            }}
-            style={styles.buttonStyle}
-          >
-            <Text style={styles.buttonTextStyle}>Add Task</Text>
-          </TouchableOpacity>
-          <View>
-            <Text style={styles.taskList}>Tasks:</Text>
-            <FlatList
-              data={tasks}
-              renderItem={({ item }) => (
-             <View style={styles.task}>
-  <View style={styles.taskInfo}>
-    <Checkbox
-      status={item.completed ? "checked" : "unchecked"}
-      onPress={() => toggleTaskCompletion(item)}
-    />
-    <View style={{ flex: 1 }}>
-      <Text
-        style={[
-          styles.taskText,
-          item.completed && styles.completedTask,
-        ]}
-      >
-        {item.task}
-      </Text>
-    </View>
-  </View>
-  <View style={styles.taskDetailsContainer}>
-
-    <Text style={styles.priorityText}>{item.priority}</Text>
-    <Text style={styles.categoryText}>{item.category}</Text>
-  </View>
-  <View style={styles.icons}>
-    <IconButton
-      icon="pencil"
-      size={24}
-      onPress={() => showDialog(item)}
-    />
-    <IconButton
-      icon="delete"
-      size={24}
-      onPress={() => deleteTask(item)}
-    />
-  </View>
-</View>
-
-              )}
-              keyExtractor={(item) => item.uid.toString()}
-            />
-          </View>
-        </View>
+      <SafeAreaView style={styles.container}>
         <Portal>
           <Dialog
-            visible={dialog.isVisible}
-            onDismiss={() => hideDialog(dialog.task)}
+            visible={dialogADD.isVisible}
+            onDismiss={() => hideDialogADD(dialogADD.task)}
+            style={styles.dialog}
           >
             <Dialog.Title>Edit Task</Dialog.Title>
             <Dialog.Content>
-              <TextInput
-                value={dialog.task.task}
-                onChangeText={(text) =>
+              <View style={styles.input}>
+                <TextInput
+                  placeholder="Enter a new task"
+                  value={taskInputValue}
+                  onChangeText={(data) => setTaskInputValue(data)}
+                  underlineColorAndroid="transparent"
+                  style={styles.textInputStyle}
+                />
+              </View>
+              {/* Priority Picker */}
+              <View style={styles.pickerContainer}>
+                <Text style={styles.label}>Select Priority:</Text>
+                <ModalSelector
+                  data={[
+                    { key: TaskPriority.HIGH, label: "High" },
+                    { key: TaskPriority.MEDIUM, label: "Medium" },
+                    { key: TaskPriority.LOW, label: "Low" },
+                  ]}
+                  initValue={TaskPriority.MEDIUM}
+                  onChange={(option) => setTaskPriority(option.key)}
+                >
+                  <TextInput
+                    style={pickerStyles}
+                    editable={false}
+                    value={taskPriority}
+                  />
+                </ModalSelector>
+              </View>
+              {/* Category Picker */}
+              <View style={styles.pickerContainer}>
+                <Text style={styles.label}>Select Category:</Text>
+                <ModalSelector
+                  data={[
+                    { key: TaskCategory.PERSONAL, label: "Personal" },
+                    { key: TaskCategory.WORK, label: "Work" },
+                    { key: TaskCategory.SHOPPING, label: "Shopping" },
+                    // Add more categories as needed
+                  ]}
+                  initValue={TaskCategory.PERSONAL}
+                  onChange={(option) => setTaskCategory(option.key)}
+                >
+                  <TextInput
+                    style={pickerStyles}
+                    editable={false}
+                    value={taskCategory}
+                  />
+                </ModalSelector>
+                <Text style={styles.label}>Select Color:</Text>
+                <ColorPicker
+                  selectedColor={taskColor}
+                  onColorChange={setTaskColor}
+                />
+              </View>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <TouchableOpacity
+                disabled={!taskInputValue}
+                onPress={() => {
+                  const newTask = {
+                    uid: Date.now().toString(),
+                    task: taskInputValue,
+                    priority: taskPriority,
+                    category: taskCategory,
+                    completed: false,
+                    color: taskColor,
+                    showActions: false, // Initial state for showing actions
+                  };
+                  setTasks([...tasks, newTask]);
+                  db.transaction((tx) => {
+                    tx.executeSql(
+                      "insert into tasks (uid, task, priority, category, completed, color) values(?, ?, ?, ?, ?, ?)",
+                      [
+                        newTask.uid,
+                        newTask.task,
+                        newTask.priority,
+                        newTask.category,
+                        newTask.completed ? 1 : 0,
+                        newTask.color,
+                      ]
+                    );
+                  });
+                  hideDialogADD();
+                  setTaskInputValue("");
+                }}
+                style={styles.buttonStyle}
+              >
+                <Text style={styles.buttonTextStyle}>Add Task</Text>
+              </TouchableOpacity>
+              {/* Add Cancel button */}
+              <Button
+                
+               onPress={() => hideDialogADD()}>Cancel</Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => showDialogADD({})}
+        >
+          <Ionicons name="ios-add" size={36} color="white" />
+        </TouchableOpacity>
+
+        <Text style={styles.titleText}>To-Do List</Text>
+
+        <View>
+          <Text style={styles.taskList}>Tasks:</Text>
+          <FlatList
+            data={tasks}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.task,
+                  {
+                    backgroundColor: item.color,
+                  },
+                ]}
+                onPress={() => toggleTaskActions(item)}
+              >
+                <View style={styles.taskInfo}>
+                  <IconButton
+                    icon={
+                      item.completed
+                        ? "checkbox-marked-circle-outline"
+                        : "checkbox-blank-circle-outline"
+                    }
+                    size={20}
+                    onPress={() => toggleTaskCompletion(item)}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.taskText,
+                        item.completed && styles.completedTask,
+                      ]}
+                    >
+                      {item.task}
+                    </Text>
+                  </View>
+                  <View style={styles.icons}>
+                    <>
+                      <IconButton
+                        icon="pencil"
+                        size={20}
+                        onPress={() => showDialog(item)}
+                      />
+                      <IconButton
+                        icon="delete"
+                        size={20}
+                        onPress={() => deleteTask(item)}
+                      />
+                    </>
+                  </View>
+                </View>
+                <View style={styles.taskDetailsContainer}>
+                  <Text style={styles.priorityText}>{item.priority}</Text>
+                  <Text style={styles.categoryText}>{item.category}</Text>
+                </View>
+                <View
+                  style={[
+                    styles.colorIndicator,
+                    {
+                      backgroundColor: item.color,
+                    },
+                  ]}
+                ></View>
+              </TouchableOpacity>
+            )}
+            keyExtractor={(item) => item.uid.toString()}
+          />
+        </View>
+      </SafeAreaView>
+      <Portal>
+        <Dialog
+          visible={dialog.isVisible}
+          onDismiss={() => hideDialog(dialog.task)}
+        >
+          <Dialog.Title>Edit Task</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              value={dialog.task.task}
+              onChangeText={(text) =>
+                setDialog((prev) => ({
+                  ...prev,
+                  task: {
+                    ...prev.task,
+                    task: text,
+                  },
+                }))
+              }
+              underlineColorAndroid="transparent"
+              style={styles.textInputStyle}
+            />
+            <View style={styles.pickerContainer}>
+              <Text style={styles.label}>Select Priority:</Text>
+              <ModalSelector
+                data={[
+                  { key: TaskPriority.HIGH, label: "High" },
+                  { key: TaskPriority.MEDIUM, label: "Medium" },
+                  { key: TaskPriority.LOW, label: "Low" },
+                ]}
+                initValue={dialog.task.priority}
+                onChange={(option) =>
                   setDialog((prev) => ({
                     ...prev,
                     task: {
                       ...prev.task,
-                      task: text,
+                      priority: option.key,
                     },
                   }))
                 }
-                underlineColorAndroid="transparent"
-                style={styles.textInputStyle}
+              >
+                <TextInput
+                  style={pickerStyles}
+                  editable={false}
+                  value={dialog.task.priority}
+                />
+              </ModalSelector>
+              <Text style={styles.label}>Select Category:</Text>
+              <ModalSelector
+                data={[
+                  { key: TaskCategory.PERSONAL, label: "Personal" },
+                  { key: TaskCategory.WORK, label: "Work" },
+                  { key: TaskCategory.SHOPPING, label: "Shopping" },
+                  // Add more categories as needed
+                ]}
+                initValue={dialog.task.category}
+                onChange={(option) =>
+                  setDialog((prev) => ({
+                    ...prev,
+                    task: {
+                      ...prev.task,
+                      category: option.key,
+                    },
+                  }))
+                }
+              >
+                <TextInput
+                  style={pickerStyles}
+                  editable={false}
+                  value={dialog.task.category}
+                />
+              </ModalSelector>
+              <Text style={styles.label}>Select Color:</Text>
+              <ColorPicker
+                selectedColor={dialog.task.color}
+                onColorChange={(color) =>
+                  setDialog((prev) => ({
+                    ...prev,
+                    task: {
+                      ...prev.task,
+                      color: color,
+                    },
+                  }))
+                }
               />
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={dialog.task.priority}
-                  style={styles.picker}
-                  onValueChange={(itemValue) =>
-                    setDialog((prev) => ({
-                      ...prev,
-                      task: {
-                        ...prev.task,
-                        priority: itemValue,
-                      },
-                    }))
-                  }
-                >
-                  <Picker.Item label="High" value={TaskPriority.HIGH} />
-                  <Picker.Item label="Medium" value={TaskPriority.MEDIUM} />
-                  <Picker.Item label="Low" value={TaskPriority.LOW} />
-                </Picker>
-                <Picker
-                  selectedValue={dialog.task.category}
-                  style={styles.picker}
-                  onValueChange={(itemValue) =>
-                    setDialog((prev) => ({
-                      ...prev,
-                      task: {
-                        ...prev.task,
-                        category: itemValue,
-                      },
-                    }))
-                  }
-                >
-                  <Picker.Item label="Personal" value={TaskCategory.PERSONAL} />
-                  <Picker.Item label="Work" value={TaskCategory.WORK} />
-                  <Picker.Item label="Shopping" value={TaskCategory.SHOPPING} />
-                  {/* Add more categories as needed */}
-                </Picker>
-              </View>
-            </Dialog.Content>
-            <Dialog.Actions>
-              <Button onPress={() => hideDialog(dialog.task)}>Done</Button>
-            </Dialog.Actions>
-          </Dialog>
-        </Portal>
-      </SafeAreaView>
+            </View>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => hideDialog(dialog.task)}>Done</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </Provider>
   );
 }
 
 const styles = StyleSheet.create({
-  
   container: {
     flex: 1,
-    padding: 20,
+    paddingVertical: 20, // Adjust this value as needed
+    paddingHorizontal: 20, // Adjust this value a
+
     backgroundColor: "#F0F0F0",
   },
   titleText: {
@@ -322,6 +484,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 10,
+    marginHorizontal: 10,
+
     backgroundColor: "white",
     padding: 10,
     borderRadius: 10,
@@ -331,37 +495,47 @@ const styles = StyleSheet.create({
     shadowOffset: { width: -5 },
   },
   label: {
-  fontSize: 18,
-  fontWeight: "bold",
-  color: "teal",
-  marginBottom: 5,
-},
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "teal",
+    marginBottom: 5,
+    marginHorizontal: 10,
+  },
 
-  picker: {
+  task: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    padding: 10,
+    height: Platform.OS === "android" ? 100 : 100 + StatusBar.currentHeight * 2,
+    borderRadius: 10,
+    elevation: 2,
+    marginBottom: 10,
+    marginHorizontal: 10,
+
+    shadowOffset: { width: -5 },
+  },
+  icons: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
+    width: 80,
   },
-task: {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  backgroundColor: "white",
-  marginVertical: 10,
-  padding: 10,
-  borderRadius: 8,
-  elevation: 2,
-
-},
-
   taskInfo: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
+    color: "#fff",
   },
+  taskDetailsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 1,
+    marginHorizontal: 10,
+  },
+
   taskText: {
     fontSize: 18,
+    color: "#fff",
   },
   completedTask: {
     textDecorationLine: "line-through",
@@ -377,6 +551,12 @@ task: {
     fontSize: 18,
     fontWeight: "bold",
     color: "purple",
+  },
+  colorIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginLeft: 10,
   },
   buttonStyle: {
     fontSize: 18,
@@ -398,14 +578,8 @@ task: {
     flex: 1,
     fontSize: 18,
   },
-  priorityPicker: {
-    width: "25%",
-  },
-  categoryPicker: {
-    width: "25%",
-  },
-  icons: {
-    flexDirection: "row",
+  pickerContainer: {
+    marginBottom: 20,
   },
   taskList: {
     fontSize: 20,
@@ -413,4 +587,38 @@ task: {
     marginBottom: 10,
     color: "teal",
   },
+  dialog: {
+    borderRadius: 10,
+  },
+  addButton: {
+    position: "absolute",
+    right: 20,
+    bottom: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "teal",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 2,
+    shadowOffset: { width: 2, height: 2 },
+    shadowColor: "black",
+    shadowOpacity: 0.2,
+    zIndex:9999 
+
+  },
+
 });
+
+const pickerStyles = {
+  fontSize: 18,
+  paddingVertical: 12,
+  paddingHorizontal: 10,
+  borderWidth: 1,
+  borderColor: "teal",
+  borderRadius: 10,
+  color: "black",
+  paddingRight: 30,
+  marginBottom: 10,
+  marginHorizontal: 10,
+};
