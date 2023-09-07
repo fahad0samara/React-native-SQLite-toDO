@@ -4,7 +4,6 @@ import { View, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
 const ColorPicker = ({ selectedColor, onColorChange }) => {
   const colors = [
     "#000000",
-    "#FFFFFF",
     "#FF0000",
     "#00FF00",
     "#0000FF",
